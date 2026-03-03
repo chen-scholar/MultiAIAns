@@ -152,8 +152,7 @@ export function ChatForm() {
     );
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit() {
     setError(null);
     setCards([]);
 
@@ -196,6 +195,19 @@ export function ChatForm() {
     // 所有模型并发跑，互不阻塞
     await Promise.all(jobs.map((j) => runCard(j, question)));
     setLoading(false);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter 发送、Shift+Enter 换行；输入法组词时的回车不触发
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (!loading) submit();
+    }
   }
 
   if (providers.length === 0) {
@@ -267,7 +279,8 @@ export function ChatForm() {
             id="prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="输入你的问题…"
+            onKeyDown={handleKeyDown}
+            placeholder="输入你的问题…（Enter 发送，Shift+Enter 换行）"
             rows={5}
           />
         </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,6 +17,11 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className="min-h-screen bg-background text-foreground antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('multiaians.theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})()`,
+          }}
+        />
         <header className="border-b">
           <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
             <Link href="/" className="font-semibold">
@@ -34,6 +40,9 @@ export default function RootLayout({
               <Link href="/settings" className="hover:text-foreground">
                 Settings
               </Link>
+            </div>
+            <div className="ml-auto">
+              <ThemeToggle />
             </div>
           </nav>
         </header>
