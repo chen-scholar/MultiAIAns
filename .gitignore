@@ -29,6 +29,8 @@ next-env.d.ts
 
 # local agent notes (not for repo)
 CLAUDE.md
+AGENTS.md
+/.claude
 
 # local claude code settings
 .claude/settings.local.json

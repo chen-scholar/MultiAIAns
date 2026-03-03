@@ -15,7 +15,7 @@ import { parseModels } from "@/lib/storage/providers";
 import type { Provider } from "@/lib/types";
 
 interface ProviderFormProps {
-  /** When set, the form edits this provider; otherwise it creates a new one. */
+  /** 有值时表示在编辑这个 Provider，否则是新建 */
   editing: Provider | null;
   onSubmit: (data: Omit<Provider, "id">) => void;
   onCancel: () => void;

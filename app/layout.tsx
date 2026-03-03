@@ -4,7 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MultiAIAns",
+  title: "MultiAIAns Prototype",
   description: "轻量的多模型问答工具",
 };
 
@@ -17,7 +17,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body className="min-h-screen bg-background text-foreground antialiased">
         <header className="border-b">
-          <nav className="mx-auto flex max-w-3xl items-center gap-6 px-4 py-3">
+          <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
             <Link href="/" className="font-semibold">
               MultiAIAns
             </Link>
@@ -25,13 +25,19 @@ export default function RootLayout({
               <Link href="/" className="hover:text-foreground">
                 Chat
               </Link>
+              <Link href="/docs" className="hover:text-foreground">
+                Docs
+              </Link>
+              <Link href="/log" className="hover:text-foreground">
+                Log
+              </Link>
               <Link href="/settings" className="hover:text-foreground">
                 Settings
               </Link>
             </div>
           </nav>
         </header>
-        <main className="mx-auto max-w-3xl px-4 py-8">{children}</main>
+        <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
       </body>
     </html>
   );

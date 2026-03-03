@@ -26,7 +26,7 @@ export function saveProviders(providers: Provider[]): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(providers));
 }
 
-/** Split a comma-separated model string into a clean list. */
+/** 把逗号分隔的 model 字符串拆成干净的数组 */
 export function parseModels(input: string): string[] {
   return input
     .split(",")

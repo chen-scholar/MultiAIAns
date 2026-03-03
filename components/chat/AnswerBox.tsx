@@ -1,26 +1,43 @@
 "use client";
 
+import { BrandIcon } from "@/components/chat/BrandIcon";
+import { Markdown } from "@/components/markdown";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { ChatResult } from "@/lib/types";
+import type { AnswerCard } from "@/lib/types";
 
-export function AnswerBox({ result }: { result: ChatResult }) {
+export function AnswerBox({ card }: { card: AnswerCard }) {
+  const title = `${card.provider} / ${card.model}`;
+
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">回答</CardTitle>
+        <div className="flex items-center gap-2">
+          <BrandIcon name={title} />
+          <CardTitle className="text-sm">{title}</CardTitle>
+        </div>
         <p className="text-xs text-muted-foreground">
-          {result.model} · {result.durationMs} ms
+          {card.status === "streaming"
+            ? "生成中…"
+            : card.status === "error"
+              ? "出错了"
+              : `${card.durationMs} ms`}
         </p>
       </CardHeader>
       <CardContent>
-        <div className="whitespace-pre-wrap text-sm leading-relaxed">
-          {result.content || "（模型返回了空内容）"}
-        </div>
+        {card.status === "error" ? (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {card.error ?? "请求失败"}
+          </p>
+        ) : card.content ? (
+          <Markdown>{card.content}</Markdown>
+        ) : (
+          <p className="text-sm text-muted-foreground">生成中…</p>
+        )}
       </CardContent>
     </Card>
   );

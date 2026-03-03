@@ -1,7 +1,5 @@
 import OpenAI from "openai";
 
-import type { ChatResult } from "@/lib/types";
-
 interface CallParams {
   baseUrl: string;
   apiKey: string;
@@ -9,30 +7,20 @@ interface CallParams {
   prompt: string;
 }
 
-/**
- * Single, non-streaming call to any OpenAI-compatible chat completions API.
- * The model name is never hard-coded — it comes from the caller.
- */
-export async function callOpenAICompatible({
+// 向任意 OpenAI-compatible 接口发起一次「流式」对话请求。
+// model 名称由调用方传入，不写死。返回 OpenAI SDK 的 streaming 迭代器，
+// 由调用方逐块消费。
+export async function streamOpenAICompatible({
   baseUrl,
   apiKey,
   model,
   prompt,
-}: CallParams): Promise<ChatResult> {
+}: CallParams) {
   const client = new OpenAI({ baseURL: baseUrl, apiKey });
 
-  const start = Date.now();
-  const completion = await client.chat.completions.create({
+  return client.chat.completions.create({
     model,
     messages: [{ role: "user", content: prompt }],
+    stream: true,
   });
-  const durationMs = Date.now() - start;
-
-  const content = completion.choices[0]?.message?.content ?? "";
-
-  return {
-    content,
-    model: completion.model || model,
-    durationMs,
-  };
 }
