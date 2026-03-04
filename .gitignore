@@ -30,6 +30,7 @@ next-env.d.ts
 # local agent notes (not for repo)
 CLAUDE.md
 AGENTS.md
+DetailAndTodos.md
 /.claude
 
 # local claude code settings

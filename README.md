@@ -27,43 +27,18 @@ MultiAIAns 是一个轻量的多模型问答工具。
 
 简单说，它不是想再做一个普通 ChatBot WebUI，而是想做一个“多模型回答对照和整理工具”。
 
----
+## 功能
 
-## 当前 MVP 范围
+- 多模型并排作答，流式输出，回答按 Markdown 渲染
+- 一键把多个回答总结成一份综合版（指出共识与分歧）
+- 浅色 / 深色模式
+- 兼容任意 OpenAI-compatible 接口：OpenAI、DeepSeek、本地 Ollama 等都行
+- 配置和请求记录只存在你自己的浏览器，API Key 不上传、不入库
 
-第一版只做最小可用版本，功能尽量收着点。
-
-### 已规划的 MVP 功能
-
-已完成：
-- ✅配置 OpenAI-compatible API Provider
-  - Provider 名称
-  - Base URL
-  - API Key
-  - 模型列表
-- ✅配置保存在浏览器本地
-- ✅Chat 页面输入问题
-- ✅选择一个 Provider 和一个模型
-- ✅调用后端 API 请求模型
-- ✅展示模型返回内容
-- ✅基础错误提示
-- ✅简单可读的页面布局
-
-TBD：
-- 适配深色模式（用CSS变量来决定颜色）。
-- 按回车直接发送消息，Shift+Enter换行，并作为问题栏的占位符。
-- 增加总结回答功能（关键！），就放在扩展功能栏，点击时会用特定模型（放在Settings里）总结所有AI的回答。（在没有回答的时不显示）
-- 添加文件上传功能（也放在扩展功能栏）
-- 添加思考强度调节功能（若模型支持，在模型设置里可勾选是否开启调节，默认关闭）
-- 在 README.md 中补充部署方法（包括本地和 Cloudflare Pages / Vercel）
-- 把 Log 改名为 History，点开某条记录能看到完整的对话/总结详情（和当时问答时一样）。
-
-### 第一版暂时不做（搁置）
-
+## Roadmap
 - 在 Settings 添加模型时，填好 Base URL + API Key 后自动拉取该 Provider 的所有可用模型及其支持的功能（像其他 AI 软件那样），逐个加入。
 - 临时上下文存储，每个模型的上下文会往下堆
-- 增加demo模式（重要！），访问网站时加上/demo可以使用特定配置的
-- 拿 ./background.webp 做背景，并加上 70% 透明度的浅色/深色遮罩，取决于显示模式。
+- 增加demo模式（重要！），访问网站时加上/demo可以使用特定配置来做临时演示
 - 用户登录
 - 数据库
 - 账号系统
@@ -75,25 +50,44 @@ TBD：
 - 复杂工作流编辑器
 - etc.
 
----
+
+## 本地运行
+
+需要 Node 18 以上。
+
+```bash
+npm install
+npm run dev
+```
+
+打开 http://localhost:3000，第一次会引导你去 Settings 添加一个模型来源（填 Base URL、API Key、模型名），然后回到 Chat 就能提问。更细的用法看站内的 Docs 页面。
+
+## 部署
+
+### 本地生产模式
+
+```bash
+npm run build
+npm start
+```
+
+### Vercel（推荐）
+
+最省事：把仓库导入 Vercel，用默认设置部署即可，API 路由跑在 Node serverless 上，开箱即用。Docs 页面运行时会读根目录的 `docs.md`，项目已在 `next.config.mjs` 里把它打进产物，线上也能正常渲染。
+
+### Cloudflare Pages（需要额外改动）
+
+Cloudflare Pages 跑在 edge runtime 上，和目前的实现有两点不兼容，了解清楚再上：
+
+- API 路由现在声明的是 `runtime = "nodejs"`，要改成 edge runtime（OpenAI SDK 基于 fetch，本身能在 edge 跑）。
+- Docs 页面用 Node 的 `fs` 读 `docs.md`，edge 没有 `fs`，得换个读法（比如把内容内联，或改成 edge 能访问的来源）。
+
+大致流程：装 `@cloudflare/next-on-pages` 适配器构建，并在 Pages 项目里开启 `nodejs_compat` 兼容标志。等真要上 Cloudflare 时再按上面两点调整，目前**优先用 Vercel**。
+
+## API Key 怎么处理
+
+Key 目前只保存在浏览器本地。发请求时临时带给后端去调模型，后端用完即弃，不做任何持久化，也没有数据库和账号系统。
 
 ## 技术栈
 
-暂定：
-
-- Next.js App Router
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-- OpenAI npm SDK
-- Zod
-- localStorage
-
-后端先用 Next.js Route Handler。  
-API Key 第一版只在用户浏览器本地保存，请求时临时传给后端使用，后端不保存。
-
----
-
-## OpenAI-compatible API
-
-项目使用最通用、标准的 OpenAI-compatible API（POST /v1/chat/completions），支持几乎所有模型提供商。
+Next.js（App Router）+ TypeScript + Tailwind CSS + shadcn/ui。后端只有一个 Route Handler 负责转发请求。
