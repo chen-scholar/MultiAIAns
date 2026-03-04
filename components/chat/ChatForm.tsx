@@ -6,6 +6,12 @@ import Link from "next/link";
 import { AnswerBox } from "@/components/chat/AnswerBox";
 import { BrandIcon } from "@/components/chat/BrandIcon";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,22 +22,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { runChatStream } from "@/lib/ai/stream-client";
+import { flattenModelOptions } from "@/lib/models";
 import { appendLog } from "@/lib/storage/logs";
 import { createId, loadProviders } from "@/lib/storage/providers";
+import {
+  loadChatSelection,
+  loadSummaryModel,
+  saveChatSelection,
+} from "@/lib/storage/settings";
 import type { AnswerCard, Provider } from "@/lib/types";
 
 // 把问题/回答截断一下，避免日志存太大
 function truncate(s: string, n = 200) {
   return s.length > n ? s.slice(0, n) + "…" : s;
-}
-
-// 跨所有 Provider 拍平出的「Provider / model」可选项
-interface ModelOption {
-  key: string;
-  providerId: string;
-  providerName: string;
-  model: string;
-  label: string;
 }
 
 // 一行模型选择
@@ -49,34 +52,39 @@ export function ChatForm() {
   const [error, setError] = React.useState<string | null>(null);
   const [cards, setCards] = React.useState<AnswerCard[]>([]);
 
-  // 把每个 Provider 的 models 拍平成「Provider / model」选项
-  const options = React.useMemo<ModelOption[]>(() => {
-    return providers.flatMap((p) =>
-      p.models.map((m) => ({
-        key: `${p.id}__${m}`,
-        providerId: p.id,
-        providerName: p.name,
-        model: m,
-        label: `${p.name} / ${m}`,
-      }))
-    );
-  }, [providers]);
+  // 最近一次提交的问题，用于「总结」时带上原问题（变化不需要触发重渲染，用 ref）
+  const lastQuestionRef = React.useRef("");
+  const [summarizing, setSummarizing] = React.useState(false);
+  const [summaryCard, setSummaryCard] = React.useState<AnswerCard | null>(null);
 
-  const optionByKey = React.useMemo(() => {
-    const map = new Map<string, ModelOption>();
-    for (const o of options) map.set(o.key, o);
-    return map;
-  }, [options]);
+  // 把每个 Provider 的 models 拍平成「Provider / model」选项
+  const options = React.useMemo(
+    () => flattenModelOptions(providers),
+    [providers]
+  );
+
+  const optionByKey = React.useMemo(
+    () => new Map(options.map((o) => [o.key, o])),
+    [options]
+  );
 
   React.useEffect(() => {
     const loaded = loadProviders();
     setProviders(loaded);
-    // 默认放一行，选中第一个可用模型
-    const firstKey = loaded[0]?.models[0]
-      ? `${loaded[0].id}__${loaded[0].models[0]}`
-      : "";
-    setRows([{ rowId: createId(), optionKey: firstKey }]);
+
+    // 优先恢复上次选好的模型组合（过滤掉已失效的），否则默认第一个可用模型
+    const opts = flattenModelOptions(loaded);
+    const validKeys = new Set(opts.map((o) => o.key));
+    const saved = loadChatSelection().filter((k) => validKeys.has(k));
+    const keys = saved.length > 0 ? saved : opts[0] ? [opts[0].key] : [""];
+    setRows(keys.map((k) => ({ rowId: createId(), optionKey: k })));
   }, []);
+
+  // 选择变化就存一份，刷新/重进后能恢复
+  React.useEffect(() => {
+    if (rows.length === 0) return;
+    saveChatSelection(rows.map((r) => r.optionKey));
+  }, [rows]);
 
   function addRow() {
     setRows((prev) => [
@@ -155,12 +163,14 @@ export function ChatForm() {
   async function submit() {
     setError(null);
     setCards([]);
+    setSummaryCard(null);
 
     const question = prompt.trim();
     if (!question) {
       setError("请输入问题。");
       return;
     }
+    lastQuestionRef.current = question;
 
     // 把每行选择解析成可执行任务
     const jobs = rows
@@ -210,15 +220,108 @@ export function ChatForm() {
     }
   }
 
+  // 把所有「已完成」的回答拼成 prompt，交给总结用模型流式汇总
+  async function handleSummarize() {
+    const done = cards.filter((c) => c.status === "done" && c.content.trim());
+    if (done.length === 0) return;
+
+    const ref = loadSummaryModel();
+    const provider = ref
+      ? providers.find((p) => p.id === ref.providerId)
+      : undefined;
+    if (!ref || !provider) {
+      setError("请先在 Settings 里配置「总结用模型」。");
+      return;
+    }
+    setError(null);
+
+    const blocks = done
+      .map((c, i) => `【回答 ${i + 1}｜${c.provider} / ${c.model}】\n${c.content}`)
+      .join("\n\n");
+    const summaryPrompt =
+      "下面是多个 AI 模型对同一个问题的回答。请综合所有回答，输出一个更完整、更准确、去重后的总结版本，" +
+      "并简要指出它们的共识与主要分歧，用 Markdown 组织。\n\n" +
+      `【原问题】\n${lastQuestionRef.current}\n\n${blocks}`;
+
+    setSummaryCard({
+      id: createId(),
+      provider: provider.name,
+      model: ref.model,
+      content: "",
+      durationMs: 0,
+      status: "streaming",
+    });
+    setSummarizing(true);
+
+    let acc = "";
+    await runChatStream(
+      {
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        model: ref.model,
+        prompt: summaryPrompt,
+      },
+      {
+        onDelta: (text) => {
+          acc += text;
+          setSummaryCard((prev) =>
+            prev ? { ...prev, content: prev.content + text } : prev
+          );
+        },
+        onDone: ({ model, durationMs }) => {
+          setSummaryCard((prev) =>
+            prev ? { ...prev, status: "done", durationMs, model } : prev
+          );
+          appendLog({
+            provider: provider.name,
+            model,
+            prompt: `[总结] ${truncate(lastQuestionRef.current, 60)}`,
+            status: "success",
+            durationMs,
+            message: truncate(acc, 80),
+          });
+        },
+        onError: (message) => {
+          setSummaryCard((prev) =>
+            prev ? { ...prev, status: "error", error: message } : prev
+          );
+          appendLog({
+            provider: provider.name,
+            model: ref.model,
+            prompt: `[总结] ${truncate(lastQuestionRef.current, 60)}`,
+            status: "error",
+            message,
+          });
+        },
+      }
+    );
+    setSummarizing(false);
+  }
+
   if (providers.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        还没有配置 Provider，请先去{" "}
-        <Link href="/settings" className="underline">
-          Settings
-        </Link>{" "}
-        添加。
-      </p>
+      <Card>
+        <CardHeader>
+          <CardTitle>欢迎使用 MultiAIAns</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            还没有任何配置，先花一分钟做下面几步：
+          </p>
+          <ol className="list-decimal space-y-1 pl-5">
+            <li>
+              去 <b>Settings</b> 添加一个 Provider（填 Base URL、API Key、模型）。
+            </li>
+            <li>
+              在 Settings 的 <b>总结设置</b> 里选一个「总结用模型」（可选，用来汇总多个回答）。
+            </li>
+            <li>回到 Chat 选模型、提问。</li>
+          </ol>
+          <Button asChild>
+            <Link href="/settings">去 Settings 配置</Link>
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -285,10 +388,20 @@ export function ChatForm() {
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={loading}>
             {loading ? "发送中…" : "发送"}
           </Button>
+          {!loading && cards.some((c) => c.status === "done") ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleSummarize}
+              disabled={summarizing}
+            >
+              {summarizing ? "总结中…" : "总结所有回答"}
+            </Button>
+          ) : null}
           <div className="flex-1 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
             未来扩展功能放在这（联网搜索 / 思考强度 / 图片文件上传，开发中）
           </div>
@@ -299,6 +412,13 @@ export function ChatForm() {
         <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
+      ) : null}
+
+      {summaryCard ? (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground">总结</h2>
+          <AnswerBox card={summaryCard} />
+        </div>
       ) : null}
 
       {cards.length > 0 ? (

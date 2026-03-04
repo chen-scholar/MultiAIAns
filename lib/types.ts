@@ -24,6 +24,12 @@ export interface AnswerCard {
   error?: string;
 }
 
+// 指向某个 Provider 下的某个 model，用于「总结用模型」配置
+export interface SummaryModelRef {
+  providerId: string;
+  model: string;
+}
+
 export interface LogEntry {
   id: string;
   /** epoch ms */

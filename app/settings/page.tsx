@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { ProviderForm } from "@/components/settings/ProviderForm";
 import { ProviderList } from "@/components/settings/ProviderList";
+import { SummarySettings } from "@/components/settings/SummarySettings";
 import {
   createId,
   loadProviders,
@@ -60,6 +61,8 @@ export default function SettingsPage() {
         onSubmit={handleSubmit}
         onCancel={() => setEditing(null)}
       />
+
+      <SummarySettings providers={providers} />
     </div>
   );
 }
