@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 
-import { AnswerBox } from "@/components/chat/AnswerBox";
+import { AnswerGrid } from "@/components/chat/AnswerGrid";
 import { BrandIcon } from "@/components/chat/BrandIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,19 +23,14 @@ import {
 } from "@/components/ui/select";
 import { runChatStream } from "@/lib/ai/stream-client";
 import { flattenModelOptions } from "@/lib/models";
-import { appendLog } from "@/lib/storage/logs";
+import { appendHistory, attachSummary } from "@/lib/storage/history";
 import { createId, loadProviders } from "@/lib/storage/providers";
 import {
   loadChatSelection,
   loadSummaryModel,
   saveChatSelection,
 } from "@/lib/storage/settings";
-import type { AnswerCard, Provider } from "@/lib/types";
-
-// 把问题/回答截断一下，避免日志存太大
-function truncate(s: string, n = 200) {
-  return s.length > n ? s.slice(0, n) + "…" : s;
-}
+import type { AnswerCard, HistoryAnswer, Provider } from "@/lib/types";
 
 // 一行模型选择
 interface SelectionRow {
@@ -54,6 +49,8 @@ export function ChatForm() {
 
   // 最近一次提交的问题，用于「总结」时带上原问题（变化不需要触发重渲染，用 ref）
   const lastQuestionRef = React.useRef("");
+  // 最近一次发送对应的历史记录 id，用于之后把总结补进同一条
+  const currentHistoryIdRef = React.useRef("");
   const [summarizing, setSummarizing] = React.useState(false);
   const [summaryCard, setSummaryCard] = React.useState<AnswerCard | null>(null);
 
@@ -105,12 +102,17 @@ export function ChatForm() {
     );
   }
 
-  // 单张卡片的流式任务：边收边更新对应卡片，结束/出错各写一条日志
+  // 单张卡片的流式任务：边收边更新对应卡片，结束后返回这条回答的最终结果（用于存历史）
   async function runCard(
     job: { id: string; provider: Provider; model: string },
     question: string
-  ) {
+  ): Promise<HistoryAnswer> {
     let acc = "";
+    let finalModel = job.model;
+    let finalDuration: number | undefined;
+    let finalStatus: "done" | "error" = "done";
+    let finalError: string | undefined;
+
     await runChatStream(
       {
         baseUrl: job.provider.baseUrl,
@@ -128,36 +130,35 @@ export function ChatForm() {
           );
         },
         onDone: ({ model, durationMs }) => {
+          finalModel = model;
+          finalDuration = durationMs;
+          finalStatus = "done";
           setCards((prev) =>
             prev.map((c) =>
               c.id === job.id ? { ...c, status: "done", durationMs, model } : c
             )
           );
-          appendLog({
-            provider: job.provider.name,
-            model,
-            prompt: truncate(question),
-            status: "success",
-            durationMs,
-            message: truncate(acc, 80),
-          });
         },
         onError: (message) => {
+          finalStatus = "error";
+          finalError = message;
           setCards((prev) =>
             prev.map((c) =>
               c.id === job.id ? { ...c, status: "error", error: message } : c
             )
           );
-          appendLog({
-            provider: job.provider.name,
-            model: job.model,
-            prompt: truncate(question),
-            status: "error",
-            message,
-          });
         },
       }
     );
+
+    return {
+      provider: job.provider.name,
+      model: finalModel,
+      content: acc,
+      durationMs: finalDuration,
+      status: finalStatus,
+      error: finalError,
+    };
   }
 
   async function submit() {
@@ -203,8 +204,11 @@ export function ChatForm() {
 
     setLoading(true);
     // 所有模型并发跑，互不阻塞
-    await Promise.all(jobs.map((j) => runCard(j, question)));
+    const answers = await Promise.all(jobs.map((j) => runCard(j, question)));
     setLoading(false);
+
+    // 整次问答存成一条历史（最新在最前），记下 id 以便之后把总结补进同一条
+    currentHistoryIdRef.current = appendHistory({ question, answers });
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -254,6 +258,10 @@ export function ChatForm() {
     setSummarizing(true);
 
     let acc = "";
+    let sumModel = ref.model;
+    let sumDuration: number | undefined;
+    let sumStatus: "done" | "error" = "done";
+
     await runChatStream(
       {
         baseUrl: provider.baseUrl,
@@ -269,33 +277,32 @@ export function ChatForm() {
           );
         },
         onDone: ({ model, durationMs }) => {
+          sumModel = model;
+          sumDuration = durationMs;
+          sumStatus = "done";
           setSummaryCard((prev) =>
             prev ? { ...prev, status: "done", durationMs, model } : prev
           );
-          appendLog({
-            provider: provider.name,
-            model,
-            prompt: `[总结] ${truncate(lastQuestionRef.current, 60)}`,
-            status: "success",
-            durationMs,
-            message: truncate(acc, 80),
-          });
         },
         onError: (message) => {
+          sumStatus = "error";
           setSummaryCard((prev) =>
             prev ? { ...prev, status: "error", error: message } : prev
           );
-          appendLog({
-            provider: provider.name,
-            model: ref.model,
-            prompt: `[总结] ${truncate(lastQuestionRef.current, 60)}`,
-            status: "error",
-            message,
-          });
         },
       }
     );
     setSummarizing(false);
+
+    // 总结成功就补进对应的那条历史记录
+    if (sumStatus === "done") {
+      attachSummary(currentHistoryIdRef.current, {
+        provider: provider.name,
+        model: sumModel,
+        content: acc,
+        durationMs: sumDuration,
+      });
+    }
   }
 
   if (providers.length === 0) {
@@ -414,20 +421,7 @@ export function ChatForm() {
         </p>
       ) : null}
 
-      {summaryCard ? (
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">总结</h2>
-          <AnswerBox card={summaryCard} />
-        </div>
-      ) : null}
-
-      {cards.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {cards.map((card) => (
-            <AnswerBox key={card.id} card={card} />
-          ))}
-        </div>
-      ) : null}
+      <AnswerGrid cards={cards} summary={summaryCard} />
     </div>
   );
 }

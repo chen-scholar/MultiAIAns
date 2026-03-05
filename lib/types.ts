@@ -30,16 +30,30 @@ export interface SummaryModelRef {
   model: string;
 }
 
-export interface LogEntry {
+// 一条历史记录里的单个模型回答
+export interface HistoryAnswer {
+  provider: string;
+  model: string;
+  content: string;
+  durationMs?: number;
+  status: "done" | "error";
+  error?: string;
+}
+
+// 历史记录里的总结（可选，用户点了「总结所有回答」才有）
+export interface HistorySummary {
+  provider: string;
+  model: string;
+  content: string;
+  durationMs?: number;
+}
+
+// 一次「发送」存成一条完整会话记录：问题 + 各模型回答 + 可选总结。绝不记录 apiKey。
+export interface HistoryEntry {
   id: string;
   /** epoch ms */
   at: number;
-  provider: string;
-  model: string;
-  /** 截断后的问题，绝不记录 apiKey */
-  prompt: string;
-  status: "success" | "error";
-  durationMs?: number;
-  /** 出错时是错误信息，成功时是回答的简短预览 */
-  message?: string;
+  question: string;
+  answers: HistoryAnswer[];
+  summary?: HistorySummary;
 }

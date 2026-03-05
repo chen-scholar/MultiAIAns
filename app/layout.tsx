@@ -34,8 +34,8 @@ export default function RootLayout({
               <Link href="/docs" className="hover:text-foreground">
                 Docs
               </Link>
-              <Link href="/log" className="hover:text-foreground">
-                Log
+              <Link href="/history" className="hover:text-foreground">
+                History
               </Link>
               <Link href="/settings" className="hover:text-foreground">
                 Settings
