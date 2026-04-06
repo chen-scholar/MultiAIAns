@@ -8,6 +8,8 @@ MultiAIAns 是一个轻量的多模型问答工具。
 
 ---
 
+![demoImage01](./demoImage01.webp)
+
 ## 为什么做这个
 
 平时用 AI 的时候，经常会遇到几种情况：
