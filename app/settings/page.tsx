@@ -44,9 +44,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
+        <h1 className="text-2xl font-semibold">设置 / Settings</h1>
         <p className="text-sm text-muted-foreground">
-          配置 OpenAI-compatible 的 Provider，保存在本地浏览器。
+          配置 OpenAI-compatible 的 Provider（模型提供商），保存在本地浏览器。
         </p>
       </div>
 

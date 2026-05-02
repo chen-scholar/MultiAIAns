@@ -14,7 +14,7 @@ export function AnswerBox({ card }: { card: AnswerCard }) {
   const title = `${card.provider} / ${card.model}`;
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <BrandIcon name={title} />

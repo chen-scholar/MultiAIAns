@@ -7,23 +7,29 @@ interface StreamArgs {
   prompt: string;
 }
 
+interface DemoStreamArgs {
+  providerId: string;
+  model: string;
+  prompt: string;
+}
+
 interface StreamHandlers {
   onDelta: (text: string) => void;
   onDone: (info: { model: string; durationMs: number }) => void;
   onError: (message: string) => void;
 }
 
-// 向 /api/multi-chat 发起一次流式请求，逐行解析 NDJSON 并回调。
-// 多模型并排时，每张卡片各调用一次本函数，互不影响。
-export async function runChatStream(
-  { baseUrl, apiKey, model, prompt }: StreamArgs,
+// 向 /api/multi-chat POST 一次请求，逐行解析 NDJSON 并回调。
+// 普通模式和 demo 模式只是请求体不同，读流逻辑完全一样。
+async function readNdjson(
+  body: unknown,
   { onDelta, onDone, onError }: StreamHandlers
 ): Promise<void> {
   try {
     const res = await fetch("/api/multi-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baseUrl, apiKey, model, prompt }),
+      body: JSON.stringify(body),
     });
 
     // 校验失败等情况后端返回 JSON 错误（非流式）
@@ -60,4 +66,21 @@ export async function runChatStream(
   } catch (err) {
     onError(err instanceof Error ? err.message : "网络请求失败");
   }
+}
+
+// 普通模式：前端带上 baseUrl + apiKey。
+// 多模型并排时，每张卡片各调用一次本函数，互不影响。
+export function runChatStream(
+  { baseUrl, apiKey, model, prompt }: StreamArgs,
+  handlers: StreamHandlers
+): Promise<void> {
+  return readNdjson({ baseUrl, apiKey, model, prompt }, handlers);
+}
+
+// Demo 模式：只带 providerId，Key 由服务端解析，前端拿不到。
+export function runDemoChatStream(
+  { providerId, model, prompt }: DemoStreamArgs,
+  handlers: StreamHandlers
+): Promise<void> {
+  return readNdjson({ demo: true, providerId, model, prompt }, handlers);
 }

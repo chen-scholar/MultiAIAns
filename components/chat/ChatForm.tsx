@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { runChatStream } from "@/lib/ai/stream-client";
+import { runChatStream, runDemoChatStream } from "@/lib/ai/stream-client";
 import { flattenModelOptions } from "@/lib/models";
 import { appendHistory, attachSummary } from "@/lib/storage/history";
 import { createId, loadProviders } from "@/lib/storage/providers";
@@ -30,7 +30,12 @@ import {
   loadSummaryModel,
   saveChatSelection,
 } from "@/lib/storage/settings";
-import type { AnswerCard, HistoryAnswer, Provider } from "@/lib/types";
+import type {
+  AnswerCard,
+  HistoryAnswer,
+  Provider,
+  SummaryModelRef,
+} from "@/lib/types";
 
 // 一行模型选择
 interface SelectionRow {
@@ -38,7 +43,25 @@ interface SelectionRow {
   optionKey: string;
 }
 
-export function ChatForm() {
+// 对话框下方的示例问题，点一下直接向所有模型发问
+const EXAMPLE_QUESTIONS = [
+  "堆排序和桶排序的优缺点",
+  "PyCharm和VSCode哪个更适合写Python",
+  "安卓和iPhone的拍照哪个好",
+];
+
+const EXAMPLE_TOAST =
+  "已同时向所有模型询问，向下翻动查看不同回答，回答完成后点击【总结】生成总结";
+
+// Demo 模式：providers 与总结模型都来自仓库根的 demo.config.json（前端拿不到 Key）
+interface DemoProps {
+  providers: Provider[];
+  summary?: SummaryModelRef;
+}
+
+export function ChatForm({ demo }: { demo?: DemoProps } = {}) {
+  const isDemo = !!demo;
+
   const [providers, setProviders] = React.useState<Provider[]>([]);
   const [rows, setRows] = React.useState<SelectionRow[]>([]);
   const [prompt, setPrompt] = React.useState("");
@@ -54,6 +77,22 @@ export function ChatForm() {
   const [summarizing, setSummarizing] = React.useState(false);
   const [summaryCard, setSummaryCard] = React.useState<AnswerCard | null>(null);
 
+  // 轻量 Toast（点示例问题时提示一下），到点自动消失
+  const [toast, setToast] = React.useState<string | null>(null);
+  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(message: string) {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  }
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
   // 把每个 Provider 的 models 拍平成「Provider / model」选项
   const options = React.useMemo(
     () => flattenModelOptions(providers),
@@ -66,6 +105,14 @@ export function ChatForm() {
   );
 
   React.useEffect(() => {
+    if (demo) {
+      // Demo：模型固定为配置里的全部，全部预选，不读/不写 localStorage
+      setProviders(demo.providers);
+      const opts = flattenModelOptions(demo.providers);
+      setRows(opts.map((o) => ({ rowId: createId(), optionKey: o.key })));
+      return;
+    }
+
     const loaded = loadProviders();
     setProviders(loaded);
 
@@ -75,13 +122,14 @@ export function ChatForm() {
     const saved = loadChatSelection().filter((k) => validKeys.has(k));
     const keys = saved.length > 0 ? saved : opts[0] ? [opts[0].key] : [""];
     setRows(keys.map((k) => ({ rowId: createId(), optionKey: k })));
-  }, []);
+  }, [demo]);
 
-  // 选择变化就存一份，刷新/重进后能恢复
+  // 选择变化就存一份，刷新/重进后能恢复（demo 模式固定，不存）
   React.useEffect(() => {
+    if (demo) return;
     if (rows.length === 0) return;
     saveChatSelection(rows.map((r) => r.optionKey));
-  }, [rows]);
+  }, [rows, demo]);
 
   function addRow() {
     setRows((prev) => [
@@ -113,43 +161,53 @@ export function ChatForm() {
     let finalStatus: "done" | "error" = "done";
     let finalError: string | undefined;
 
-    await runChatStream(
-      {
-        baseUrl: job.provider.baseUrl,
-        apiKey: job.provider.apiKey,
-        model: job.model,
-        prompt: question,
+    const handlers = {
+      onDelta: (text: string) => {
+        acc += text;
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === job.id ? { ...c, content: c.content + text } : c
+          )
+        );
       },
-      {
-        onDelta: (text) => {
-          acc += text;
-          setCards((prev) =>
-            prev.map((c) =>
-              c.id === job.id ? { ...c, content: c.content + text } : c
-            )
-          );
+      onDone: ({ model, durationMs }: { model: string; durationMs: number }) => {
+        finalModel = model;
+        finalDuration = durationMs;
+        finalStatus = "done";
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === job.id ? { ...c, status: "done", durationMs, model } : c
+          )
+        );
+      },
+      onError: (message: string) => {
+        finalStatus = "error";
+        finalError = message;
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === job.id ? { ...c, status: "error", error: message } : c
+          )
+        );
+      },
+    };
+
+    // 普通模式带 baseUrl + apiKey；demo 模式只带 providerId，Key 由服务端解析
+    if (isDemo) {
+      await runDemoChatStream(
+        { providerId: job.provider.id, model: job.model, prompt: question },
+        handlers
+      );
+    } else {
+      await runChatStream(
+        {
+          baseUrl: job.provider.baseUrl,
+          apiKey: job.provider.apiKey,
+          model: job.model,
+          prompt: question,
         },
-        onDone: ({ model, durationMs }) => {
-          finalModel = model;
-          finalDuration = durationMs;
-          finalStatus = "done";
-          setCards((prev) =>
-            prev.map((c) =>
-              c.id === job.id ? { ...c, status: "done", durationMs, model } : c
-            )
-          );
-        },
-        onError: (message) => {
-          finalStatus = "error";
-          finalError = message;
-          setCards((prev) =>
-            prev.map((c) =>
-              c.id === job.id ? { ...c, status: "error", error: message } : c
-            )
-          );
-        },
-      }
-    );
+        handlers
+      );
+    }
 
     return {
       provider: job.provider.name,
@@ -161,12 +219,12 @@ export function ChatForm() {
     };
   }
 
-  async function submit() {
+  async function submit(overrideQuestion?: string) {
     setError(null);
     setCards([]);
     setSummaryCard(null);
 
-    const question = prompt.trim();
+    const question = (overrideQuestion ?? prompt).trim();
     if (!question) {
       setError("请输入问题。");
       return;
@@ -207,8 +265,11 @@ export function ChatForm() {
     const answers = await Promise.all(jobs.map((j) => runCard(j, question)));
     setLoading(false);
 
-    // 整次问答存成一条历史（最新在最前），记下 id 以便之后把总结补进同一条
-    currentHistoryIdRef.current = appendHistory({ question, answers });
+    // 整次问答存成一条历史（最新在最前），记下 id 以便之后把总结补进同一条。
+    // Demo 模式临时演示，不写访客本地 History。
+    if (!isDemo) {
+      currentHistoryIdRef.current = appendHistory({ question, answers });
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -224,17 +285,29 @@ export function ChatForm() {
     }
   }
 
+  // 点示例问题：填入问题框并直接发送，同时弹个提示
+  function askExample(question: string) {
+    if (loading) return;
+    setPrompt(question);
+    showToast(EXAMPLE_TOAST);
+    submit(question);
+  }
+
   // 把所有「已完成」的回答拼成 prompt，交给总结用模型流式汇总
   async function handleSummarize() {
     const done = cards.filter((c) => c.status === "done" && c.content.trim());
     if (done.length === 0) return;
 
-    const ref = loadSummaryModel();
+    const ref = isDemo ? demo?.summary ?? null : loadSummaryModel();
     const provider = ref
       ? providers.find((p) => p.id === ref.providerId)
       : undefined;
     if (!ref || !provider) {
-      setError("请先在 Settings 里配置「总结用模型」。");
+      setError(
+        isDemo
+          ? "Demo 未配置总结用模型。"
+          : "请先在 Settings 里配置「总结用模型」。"
+      );
       return;
     }
     setError(null);
@@ -262,40 +335,49 @@ export function ChatForm() {
     let sumDuration: number | undefined;
     let sumStatus: "done" | "error" = "done";
 
-    await runChatStream(
-      {
-        baseUrl: provider.baseUrl,
-        apiKey: provider.apiKey,
-        model: ref.model,
-        prompt: summaryPrompt,
+    const handlers = {
+      onDelta: (text: string) => {
+        acc += text;
+        setSummaryCard((prev) =>
+          prev ? { ...prev, content: prev.content + text } : prev
+        );
       },
-      {
-        onDelta: (text) => {
-          acc += text;
-          setSummaryCard((prev) =>
-            prev ? { ...prev, content: prev.content + text } : prev
-          );
+      onDone: ({ model, durationMs }: { model: string; durationMs: number }) => {
+        sumModel = model;
+        sumDuration = durationMs;
+        sumStatus = "done";
+        setSummaryCard((prev) =>
+          prev ? { ...prev, status: "done", durationMs, model } : prev
+        );
+      },
+      onError: (message: string) => {
+        sumStatus = "error";
+        setSummaryCard((prev) =>
+          prev ? { ...prev, status: "error", error: message } : prev
+        );
+      },
+    };
+
+    if (isDemo) {
+      await runDemoChatStream(
+        { providerId: provider.id, model: ref.model, prompt: summaryPrompt },
+        handlers
+      );
+    } else {
+      await runChatStream(
+        {
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          model: ref.model,
+          prompt: summaryPrompt,
         },
-        onDone: ({ model, durationMs }) => {
-          sumModel = model;
-          sumDuration = durationMs;
-          sumStatus = "done";
-          setSummaryCard((prev) =>
-            prev ? { ...prev, status: "done", durationMs, model } : prev
-          );
-        },
-        onError: (message) => {
-          sumStatus = "error";
-          setSummaryCard((prev) =>
-            prev ? { ...prev, status: "error", error: message } : prev
-          );
-        },
-      }
-    );
+        handlers
+      );
+    }
     setSummarizing(false);
 
-    // 总结成功就补进对应的那条历史记录
-    if (sumStatus === "done") {
+    // 总结成功就补进对应的那条历史记录（demo 不写 History）
+    if (sumStatus === "done" && !isDemo) {
       attachSummary(currentHistoryIdRef.current, {
         provider: provider.name,
         model: sumModel,
@@ -306,6 +388,18 @@ export function ChatForm() {
   }
 
   if (providers.length === 0) {
+    if (isDemo) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Demo 暂未配置模型</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            请在仓库根目录的 <code>demo.config.json</code> 里配置 Provider，并在环境变量里填好对应的 API Key。
+          </CardContent>
+        </Card>
+      );
+    }
     return (
       <Card>
         <CardHeader>
@@ -317,15 +411,15 @@ export function ChatForm() {
           </p>
           <ol className="list-decimal space-y-1 pl-5">
             <li>
-              去 <b>Settings</b> 添加一个 Provider（填 Base URL、API Key、模型）。
+              去 <b>设置</b> 添加你需要的模型提供商（填入 Base URL、API Key、模型编号）。
             </li>
             <li>
-              在 Settings 的 <b>总结设置</b> 里选一个「总结用模型」（可选，用来汇总多个回答）。
+              在设置中的的 <b>总结设置</b> 里选一个「总结用模型」（用来汇总多个回答）。
             </li>
-            <li>回到 Chat 选模型、提问。</li>
+            <li>回到 <b>聊天</b> 选模型、提问。</li>
           </ol>
           <Button asChild>
-            <Link href="/settings">去 Settings 配置</Link>
+            <Link href="/settings">去设置配置</Link>
           </Button>
         </CardContent>
       </Card>
@@ -336,14 +430,16 @@ export function ChatForm() {
     <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label>模型（可加多个，一次并排作答）</Label>
+          <Label>
+            {isDemo ? "模型（Demo 固定，不可更改）" : "模型（可加多个，一次并排作答）"}
+          </Label>
           <div className="space-y-2">
             {rows.map((row) => (
               <div key={row.rowId} className="flex items-center gap-2">
                 <Select
                   value={row.optionKey}
                   onValueChange={(v) => changeRow(row.rowId, v)}
-                  disabled={loading}
+                  disabled={loading || isDemo}
                 >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="选择 Provider / model" />
@@ -364,7 +460,7 @@ export function ChatForm() {
                   variant="outline"
                   size="icon"
                   onClick={() => removeRow(row.rowId)}
-                  disabled={loading || rows.length <= 1}
+                  disabled={loading || isDemo || rows.length <= 1}
                   aria-label="删除这一行"
                 >
                   −
@@ -377,7 +473,7 @@ export function ChatForm() {
             variant="outline"
             size="sm"
             onClick={addRow}
-            disabled={loading}
+            disabled={loading || isDemo}
           >
             + 添加模型
           </Button>
@@ -395,9 +491,25 @@ export function ChatForm() {
           />
         </div>
 
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {EXAMPLE_QUESTIONS.map((q) => (
+            <Button
+              key={q}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => askExample(q)}
+              disabled={loading}
+              className="h-auto whitespace-normal py-2 text-left"
+            >
+              {q}
+            </Button>
+          ))}
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={loading}>
-            {loading ? "发送中…" : "发送"}
+            {loading ? "回答中…" : "发送"}
           </Button>
           {!loading && cards.some((c) => c.status === "done") ? (
             <Button
@@ -408,9 +520,18 @@ export function ChatForm() {
             >
               {summarizing ? "总结中…" : "总结所有回答"}
             </Button>
-          ) : null}
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled
+              title="等模型答完后可以一键总结所有回答"
+            >
+              总结所有回答
+            </Button>
+          )}
           <div className="flex-1 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-            未来扩展功能放在这（联网搜索 / 思考强度 / 图片文件上传，开发中）
+            未来扩展功能放在这（联网搜索 / 思考强度 / 图片文件上传，持续开发中...）
           </div>
         </div>
       </form>
@@ -422,6 +543,14 @@ export function ChatForm() {
       ) : null}
 
       <AnswerGrid cards={cards} summary={summaryCard} />
+
+      {toast ? (
+        <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          <div className="max-w-md rounded-lg border bg-foreground px-4 py-3 text-sm text-background shadow-lg">
+            {toast}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -29,16 +29,16 @@ export default function RootLayout({
             </Link>
             <div className="flex gap-4 text-sm text-muted-foreground">
               <Link href="/" className="hover:text-foreground">
-                Chat
+                对话
               </Link>
               <Link href="/docs" className="hover:text-foreground">
-                Docs
+                文档
               </Link>
               <Link href="/history" className="hover:text-foreground">
-                History
+                历史
               </Link>
               <Link href="/settings" className="hover:text-foreground">
-                Settings
+                设置
               </Link>
             </div>
             <div className="ml-auto">

@@ -1,0 +1,26 @@
+{
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "深度求索",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "MAA_APIKEY_01",
+      "models": ["deepseek-v4-flash"]
+    },
+    {
+      "id": "zai",
+      "name": "Z-AI",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKeyEnv": "MAA_APIKEY_02",
+      "models": ["zai-org/GLM-4.5-Air"]
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKeyEnv": "MAA_APIKEY_03",
+      "models": ["MiniMaxAI/MiniMax-M2.5"]
+    }
+  ],
+  "summary": { "providerId": "deepseek", "model": "deepseek-chat" }
+}

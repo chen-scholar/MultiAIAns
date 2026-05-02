@@ -20,6 +20,7 @@ const BRANDS: Brand[] = [
   { key: "claude", label: "Claude", keywords: ["claude", "anthropic"], color: "#D97757", short: "Cl" },
   { key: "glm", label: "GLM", keywords: ["glm", "zhipu", "chatglm"], color: "#2E5BFF", short: "GL" },
   { key: "qwen", label: "Qwen", keywords: ["qwen", "tongyi", "通义"], color: "#615CED", short: "Qw" },
+  { key: "minimax", label: "MiniMax", keywords: ["minimax"], color: "#FF6B6B", short: "MM" },
   { key: "grok", label: "Grok", keywords: ["grok", "xai"], color: "#111827", short: "Gk" },
 ];
 

@@ -4,9 +4,9 @@ export default function ChatPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Chat</h1>
+        <h1 className="text-2xl font-semibold">对话 / Chat</h1>
         <p className="text-sm text-muted-foreground">
-          选择一个 Provider 和 Model，问一个问题。
+          选择所需的提供商和模型，问你想问的问题 :)
         </p>
       </div>
       <ChatForm />

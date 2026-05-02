@@ -20,7 +20,7 @@ export default async function DocsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Docs</h1>
+        <h1 className="text-2xl font-semibold">文档 / Docs</h1>
         <p className="text-sm text-muted-foreground">
           内容来自项目根目录的 docs.md，改那个文件即可更新。
         </p>

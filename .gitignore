@@ -21,17 +21,19 @@ yarn-error.log*
 
 # local env files
 .env
+.env.local
 .env*.local
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# local agent notes (not for repo)
+# local agent notes
 CLAUDE.md
 AGENTS.md
 DetailAndTodos.md
 /.claude
+/.codex
 
 # local claude code settings
 .claude/settings.local.json
