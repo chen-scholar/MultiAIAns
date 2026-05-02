@@ -33,7 +33,6 @@ MultiAIAns 是一个轻量的多模型问答工具。
 
 - 多模型并排作答，流式输出，回答按 Markdown 渲染
 - 一键把多个回答总结成一份综合版（指出共识与分歧）
-- 演示模式：访问 `/demo` 用站点预置模型直接体验，访客不用配 Key（Key 只在服务端）
 - 浅色 / 深色模式
 - 兼容任意 OpenAI-compatible 接口：OpenAI、DeepSeek、本地 Ollama 等都行
 - 配置和请求记录只存在你自己的浏览器，API Key 不上传、不入库
@@ -41,6 +40,7 @@ MultiAIAns 是一个轻量的多模型问答工具。
 ## Roadmap
 - 在 Settings 添加模型时，填好 Base URL + API Key 后自动拉取该 Provider 的所有可用模型及其支持的功能（像其他 AI 软件那样），逐个加入。
 - 临时上下文存储，每个模型的上下文会往下堆
+- 增加demo模式（重要！），访问网站时加上/demo可以使用特定配置来做临时演示
 - 数据库
 - RAG
 - Agent 工具调用
@@ -71,7 +71,7 @@ npm start
 
 ### Vercel（推荐）
 
-最省事：把仓库导入 Vercel，用默认设置部署即可，API 路由跑在 Node serverless 上，开箱即用。Docs 页面运行时会读根目录的 `docs.md`，项目已在 `next.config.mjs` 里把它打进产物，线上也能正常渲染。
+把仓库导入 Vercel，用默认设置部署即可，API 路由跑在 Node serverless 上，开箱即用。Docs 页面运行时会读根目录的 `docs.md`，项目已在 `next.config.mjs` 里把它打进产物，线上也能正常渲染。
 
 ### Cloudflare Pages（需要额外改动）
 
